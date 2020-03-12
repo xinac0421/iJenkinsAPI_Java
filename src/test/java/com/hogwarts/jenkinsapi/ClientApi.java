@@ -1,6 +1,6 @@
-package com.hogwarts.jenkins;
+package com.hogwarts.jenkinsapi;
 
-import com.hogwarts.common.IJenkinsAPI;
+import com.hogwarts.tools.JSONParser;
 import com.hogwarts.tools.Timer;
 import com.sun.jersey.api.client.Client;
 import com.sun.jersey.api.client.ClientResponse;
@@ -12,11 +12,9 @@ import java.io.*;
 import java.util.Properties;
 import java.util.concurrent.TimeoutException;
 
-import com.hogwarts.tools.JSONParaser;
-
 public class ClientApi {
     private String url = "";
-    public static Logger logger = Logger.getLogger(IJenkinsAPI.class);
+    public static Logger logger = Logger.getLogger(ClientApi.class);
     private String username;
     private String password;
     private String host;
@@ -53,14 +51,14 @@ public class ClientApi {
     public boolean isJobBuilding(int buildNumber) throws Exception {
         String path = "job/" + jobName + "/" + buildNumber + "/api/json";
         String rJson = get(path, TYPE_JSON);
-        String isBuilding = JSONParaser.getJsonValue(rJson, "building");
+        String isBuilding = JSONParser.getJsonValue(rJson, "building");
         return isBuilding == "true" ? true : false;
     }
 
     public String getJobResult(int buildNumber) throws Exception {
         String path = "job/" + jobName + "/" + buildNumber + "/api/json";
         String rJson = get(path, TYPE_JSON);
-        String jobResult = JSONParaser.getJsonValue(rJson, "result");
+        String jobResult = JSONParser.getJsonValue(rJson, "result");
         return jobResult;
     }
 

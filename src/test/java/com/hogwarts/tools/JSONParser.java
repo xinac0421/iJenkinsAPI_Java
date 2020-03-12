@@ -3,7 +3,7 @@ package com.hogwarts.tools;
 import org.json.JSONObject;
 
 
-public class JSONParaser {
+public class JSONParser {
     /**
      * 解析Json内容
      *
