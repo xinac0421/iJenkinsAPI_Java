@@ -1,6 +1,7 @@
 package com.hogwarts.jenkins;
 
 import com.hogwarts.common.IJenkinsAPI;
+import com.hogwarts.tools.Timer;
 import com.sun.jersey.api.client.Client;
 import com.sun.jersey.api.client.ClientResponse;
 import com.sun.jersey.api.client.WebResource;
@@ -9,18 +10,27 @@ import org.apache.log4j.Logger;
 
 import java.io.*;
 import java.util.Properties;
+import java.util.concurrent.TimeoutException;
+
+import com.hogwarts.tools.JSONParaser;
 
 public class ClientApi {
     private String url = "";
-    private Logger logger = Logger.getLogger(IJenkinsAPI.class);
+    public static Logger logger = Logger.getLogger(IJenkinsAPI.class);
     private String username;
     private String password;
     private String host;
     private String port;
     private String jobName;
-    private static final String EXPECTED_MIME_TYPE = "plan/text";
+    private static final String TYPE_TEXT = "plan/text";
+    private static final String TYPE_JSON = "application/json";
 
-    public ClientApi(){
+    public String getJobName() {
+        return jobName;
+    }
+
+
+    public ClientApi() {
         String propFileName = "ijenkins_config.properties";
         Properties prop = loadFromEnvProperties(propFileName);
         username = prop.getProperty("username");
@@ -30,18 +40,32 @@ public class ClientApi {
         jobName = prop.getProperty("job_name");
     }
 
-    public String getLastBuildNuber() throws Exception{
+    public int getLastBuildNuber() throws Exception {
         String path = "job/" + jobName + "/lastBuild/buildNumber";
-        return get(path);
+        return new Integer(get(path, TYPE_TEXT)).intValue();
     }
 
-    public void runBuild() throws Exception{
+    public void runBuild() throws Exception {
         String path = "job/" + jobName + "/build";
-        post(path);
+        post(path, TYPE_TEXT);
+    }
+
+    public boolean isJobBuilding(int buildNumber) throws Exception {
+        String path = "job/" + jobName + "/" + buildNumber + "/api/json";
+        String rJson = get(path, TYPE_JSON);
+        String isBuilding = JSONParaser.getJsonValue(rJson, "building");
+        return isBuilding == "true" ? true : false;
+    }
+
+    public String getJobResult(int buildNumber) throws Exception {
+        String path = "job/" + jobName + "/" + buildNumber + "/api/json";
+        String rJson = get(path, TYPE_JSON);
+        String jobResult = JSONParaser.getJsonValue(rJson, "result");
+        return jobResult;
     }
 
 
-    public String get(String path) throws Exception{
+    public String get(String path, String enctype) throws Exception {
         String url = "http://" + host + ":" + port + "/" + path;
         Client client = null;
         ClientResponse response = null;
@@ -50,10 +74,10 @@ public class ClientApi {
             client = Client.create();
             client.addFilter(new HTTPBasicAuthFilter(username, password));
             WebResource webResource = client.resource(url);
-            response = webResource.accept(EXPECTED_MIME_TYPE).get(ClientResponse.class);
+            response = webResource.accept(enctype).get(ClientResponse.class);
             if (response != null && response.getStatus() >= 200 && response.getStatus() <= 206) {
                 rs = response.getEntity(String.class);
-            }else{
+            } else {
                 throw new Exception("Response status error for running " + url + " task!");
             }
         } finally {
@@ -67,7 +91,8 @@ public class ClientApi {
 
         return rs;
     }
-    public void post(String path) throws Exception {
+
+    public void post(String path, String enctype) throws Exception {
         String url = "http://" + host + ":" + port + "/" + path;
         Client client = null;
         ClientResponse response = null;
@@ -75,8 +100,8 @@ public class ClientApi {
             client = Client.create();
             client.addFilter(new HTTPBasicAuthFilter(username, password));
             WebResource webResource = client.resource(url);
-            response = webResource.accept(EXPECTED_MIME_TYPE).post(ClientResponse.class);
-            if (response == null || response.getStatus() < 200 ||  response.getStatus() > 206) {
+            response = webResource.accept(enctype).post(ClientResponse.class);
+            if (response == null || response.getStatus() < 200 || response.getStatus() > 206) {
                 throw new Exception("Response status error for running " + url + " task!");
             }
         } finally {
@@ -109,10 +134,50 @@ public class ClientApi {
     }
 
 
-
-
-    public static void main(String[] args) throws Exception{
+    public static void main(String[] args) throws Exception {
         ClientApi clientApi = new ClientApi();
-        String curBuildNumber = clientApi.getLastBuildNuber();
+        int maxWaitTime = 60; //60秒超时
+
+        //获取当前lastBuildNumber
+        int oldBuildNumber = clientApi.getLastBuildNuber();
+
+        //启动任务
+        clientApi.runBuild();
+        logger.info("启动任务：" + clientApi.getJobName());
+
+        //获取最新任务编号
+        int newBuildNumber = clientApi.getLastBuildNuber();
+        long start = System.currentTimeMillis();
+        while(!(newBuildNumber > oldBuildNumber)){
+            Timer.wait(2);
+            newBuildNumber = clientApi.getLastBuildNuber();
+
+            //判断超时
+            long end = System.currentTimeMillis();
+            if(end - start > maxWaitTime * 1000){
+                throw new TimeoutException(maxWaitTime + "秒超时");
+            }
+        }
+        logger.info("新任务编号：" + newBuildNumber);
+
+        //等待任务执行完毕
+        boolean buildingStatus = clientApi.isJobBuilding(newBuildNumber);
+        start = System.currentTimeMillis();
+        while (buildingStatus){
+            Timer.wait(2);
+            logger.info("任务" + clientApi.getJobName() + "正在运行 ...");
+            buildingStatus = clientApi.isJobBuilding(newBuildNumber);
+
+            //判断超时
+            long end = System.currentTimeMillis();
+            if(end - start > maxWaitTime * 1000){
+                throw new TimeoutException(maxWaitTime + "秒超时");
+            }
+        }
+
+        //任务运行完毕，获取任务结果
+        String buildResult = clientApi.getJobResult(newBuildNumber);
+        logger.info("任务" + clientApi.getJobName() + "运行完毕，最新任务编号：" + newBuildNumber + ", 运行结果：" + buildResult);
+
     }
 }
