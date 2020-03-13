@@ -115,17 +115,16 @@ public class ClientApi {
     private Properties loadFromEnvProperties(String propFileName) {
         Properties prop = null;
 
-        String path = System.getProperty("user.home");
-
         //读入envProperties属性文件
         try {
+            String path = getClass().getClassLoader().getResource(propFileName).getPath();
             prop = new Properties();
             InputStream in = new BufferedInputStream(
-                    new FileInputStream(path + File.separator + propFileName));
+                    new FileInputStream(path));
             prop.load(in);
             in.close();
         } catch (IOException ioex) {
-            logger.error("配置文件加载失败，请检查 " + path + File.separator + propFileName + "文件是否存在！");
+            logger.error("配置文件加载失败，请检查文件是否存在！");
         }
 
         return prop;
